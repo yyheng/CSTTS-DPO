@@ -85,7 +85,7 @@ Flags
   --max_cand_tokens N             pool filter: exclude candidates with more than N tokens (default 750)
   --keep_truncated                pool filter: keep candidates whose ended_with_eos flag is False
 
-Environment: conda env `cosyvoicenew` (torch only, CPU). Run on a compute node. No configured
+Environment: CPU is enough (torch only). No configured
 paths are needed; --show_paths prints them (cmi_dpo.paths) and exits.
 
 Example
