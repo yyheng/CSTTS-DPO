@@ -1,19 +1,10 @@
 # CSTTS-DPO: code-mixing-guided synthetic speech for code-switching ASR
 
-Reference implementation of the TTS side of *Improving Code-Switching ASR with Code-Mixing Guided
-Synthetic Speech* (arXiv:2606.19381, 2026): a CosyVoice2 speech-token LLM is fine-tuned on
-Mandarin-English SEAME, then aligned with multi-critic Direct Preference Optimization whose critics
-are MER (intelligibility, from a SEAME-fine-tuned Whisper), UTMOS (naturalness) and ΔCMI (the
-distance between the code-mixing index of the synthetic speech and that of the real recording,
-measured on frame-level language labels from a Whisper-LAL model). The aligned model synthesizes
-code-switched speech for ASR data augmentation. Downstream ASR fine-tuning is out of scope of this
-repository.
-
-## Paper
-
-Yeo, Li, Peng, Gopal, Liu, Garcia-Perera, Sailor, Wong and Chng, *Improving Code-Switching ASR with
-Code-Mixing Guided Synthetic Speech*, Proc. Interspeech 2026 (accepted). arXiv:2606.19381,
-<https://arxiv.org/abs/2606.19381>.
+Code for the TTS side of *Improving Code-Switching ASR with Code-Mixing Guided Synthetic Speech*
+(Interspeech 2026, [arXiv:2606.19381](https://arxiv.org/abs/2606.19381)): CosyVoice2 fine-tuning on
+SEAME, multi-critic DPO with MER, UTMOS and ΔCMI critics, synthesis of code-switched speech for ASR
+augmentation, and the Whisper-LAL model that turns any wav into frame-level language labels and a
+speech code-mixing index (CMIspeech).
 
 ```bibtex
 @inproceedings{yeo2026cmispeech,
@@ -25,248 +16,136 @@ Code-Mixing Guided Synthetic Speech*, Proc. Interspeech 2026 (accepted). arXiv:2
 }
 ```
 
-## What is in this repository
-
-**Component 1: TTS.** Stage 1 fine-tunes the CosyVoice2-0.5B speech-token LLM on SEAME (SFT).
-Stage 2 samples several candidates per training transcript, scores each with the three critics,
-builds preference pairs (best vs. worst candidate under the weighted reward
-`R = λ·UTMOS − γ·MER − ν·ΔCMI`) and runs DPO. The resulting model synthesizes a code-switched
-augmentation corpus (one utterance per transcript, zero-shot voice cloning from a same-speaker
-prompt).
-
-**Component 2: Whisper-LAL / CMIspeech.** A whisper-small encoder with a frame-level language head
-(20 ms frames, classes zh / en / blank / other) produces pseudo language labels for any wav, from
-which the speech code-mixing index `CMIspeech(u) = (T − max_k T_k) / T` over zh+en frames and
-`ΔCMI = |CMIspeech(synth) − CMIspeech(real)|` are computed. It works on real and synthetic audio and
-is usable on its own (`scripts/13_score_cmi.py`).
-
-```
- SEAME Kaldi dir ──► 00 manifest ──► 01 token cache ──► 02 SFT (stage 1) ──► sft ckpt
-                          │                                                     │
-                          │            ┌────────────────────────────────────────┘
-                          ▼            ▼
-                     10 gen N candidates / utt ──► 11 MER ─┐
-                                                   12 UTMOS ├─► 14 pairs (R = λU − γM − νΔCMI) ──► 15 DPO (stage 2) ──► dpo ckpt
-                     real wavs ──► 13 CMI (gt) ──► 13 CMI ─┘                                                            │
-                                   (Whisper-LAL)                                                                          ▼
-                                                                20 synthesize augmentation corpus ◄─── (or infer_one.py for one sentence)
-                                                                                    │
-                                                                 11 / 12 / 13 + eval_tts.py (UTMOS, MER, ΔCMI)
-```
-
-Layout:
-
-```
-cmi_dpo/          common.py (manifest / Kaldi IO, SEAME normaliser, MER)  cosy.py (CosyVoice2 glue:
-                  prompt inputs, sampling with temperature, token-to-wav, sequence log-probs for DPO)
-                  lal_cmi.py (Whisper-LAL labels, CMI)  paths.py (configuration, see below)
-scripts/          00_prep_manifest.py 01_build_sft_cache.py 02_train_sft.py 10_gen_candidates.py
-                  11_score_mer.py 12_score_utmos.py 13_score_cmi.py 14_build_pairs.py 15_train_dpo.py
-                  20_synthesize.py eval_tts.py infer_one.py
-lal/              Whisper-LAL model, data preparation and training code + export_state_dict.py
-slurm/            sb (sbatch wrapper) + one .sbatch per script + run_dpo_round.sh + smoke.sh
-config/           paths.env.example (copy to paths.env)
-env/              environment.yml, requirements.txt, freeze/ (the exact environments used)
-docs/             PIPELINE.md (training and evaluation recipes), CLUSTER.md (SLURM layer), DESIGN.md (design
-                  notes: data conventions, CosyVoice2 and Whisper-LAL facts the code relies on, function reference)
-patches/          one-line patch for the CosyVoice fork
-```
-
-## Installation
-
-1. Clone this repository and the CosyVoice snapshot used in the paper (the authors' fork of
-   CosyVoice). The fork does **not** track `Matcha-TTS` (CosyVoice imports it as a submodule at
-   `third_party/Matcha-TTS`; in the snapshot it lives untracked at `CosyVoice/Matcha-TTS`), so clone
-   it separately into that location and pin it: the paper's runs used Matcha-TTS 0.0.5.1 (the
-   authors' copy carries no git metadata, so the checkout below selects the upstream commit that set
-   `matcha/VERSION` to 0.0.5.1; `cosyvoice.flow` imports `matcha.models.components.*` and
-   `matcha.hifigan.models`, which later upstream commits may change).
-
-   ```bash
-   git clone https://github.com/yyheng/CSTTS-DPO.git && cd CSTTS-DPO
-   git clone https://github.com/YUCHEN005/TTS_finetune.git third_party/TTS_finetune
-   git -C third_party/TTS_finetune apply ../../patches/0001-cosyvoice-fork-remove-debug-print.patch
-   MATCHA=third_party/TTS_finetune/CosyVoice/Matcha-TTS
-   git clone https://github.com/shivammehta25/Matcha-TTS.git $MATCHA
-   git -C $MATCHA checkout $(git -C $MATCHA log --reverse --format=%H -S0.0.5.1 -- matcha/VERSION | head -1)
-   cat $MATCHA/matcha/VERSION    # 0.0.5.1
-   ```
-
-   `cmi_dpo/cosy.py` puts `$CMI_DPO_COSY_ROOT` and `$CMI_DPO_COSY_ROOT/Matcha-TTS` on `sys.path`
-   itself, so no `PYTHONPATH` is needed for the python scripts (the sbatch files export it anyway).
-
-2. Python environment (python 3.10, torch 2.3.1 / cu121, transformers 4.40.1, the pins of the
-   CosyVoice snapshot):
-
-   ```bash
-   conda env create -f env/environment.yml      # creates env "cstts" (pynini from conda-forge)
-   conda activate cstts
-   pip install -r env/requirements.txt          # already run by the yml; re-run after edits
-   ```
-
-   `env/freeze/` holds the exact `pip freeze` of the three environments the paper's numbers were
-   produced with; `docs/CLUSTER.md` explains why there were three and why one is enough now.
-
-3. Pretrained models.
-
-   * **CosyVoice2-0.5B** (the CosyVoice README's command; needs `modelscope`, which is in the
-     requirements):
-
-     ```python
-     from modelscope import snapshot_download
-     snapshot_download('iic/CosyVoice2-0.5B', local_dir='pretrained_models/CosyVoice2-0.5B')
-     ```
-
-     CosyVoice's optional `ttsfrd` text front end is not needed: without the `ttsfrd` wheel the
-     fork uses WeTextProcessing (in the requirements), which is what this pipeline runs with, and
-     SEAME text is fed to the tokenizer verbatim anyway (a text normaliser is only applied with
-     `--text_frontend`). If you do install the wheel, CosyVoice initialises it at load time from
-     `$CMI_DPO_COSY_ROOT/pretrained_models/CosyVoice-ttsfrd/resource` (download `iic/CosyVoice-ttsfrd`
-     there, not into the repository root).
-   * **whisper-large-v3** (<https://huggingface.co/openai/whisper-large-v3>) is the base of the MER
-     critic. The critic itself is whisper-large-v3 fine-tuned on SEAME (any Hugging Face Whisper
-     directory usable with `transformers.pipeline('automatic-speech-recognition')` works).
-   * **UTMOS** (UTMOS22 strong, SpeechMOS) is loaded through `torch.hub` on first use with
-     `CMI_DPO_UTMOS_SOURCE=hub` (internet needed once; the hub cache is reused afterwards). On an
-     offline machine set `CMI_DPO_UTMOS_SOURCE=local` and point `CMI_DPO_UTMOS_REPO` /
-     `CMI_DPO_UTMOS_CKPT` to a local clone of SpeechMOS and its `utmos22_strong` checkpoint.
-   * **whisper-small** (<https://huggingface.co/openai/whisper-small>) is the base of Whisper-LAL
-     (`CMI_DPO_LAL_BASE_MODEL`, downloaded by `transformers` on first use; offline, point the variable
-     at a local copy of the model directory).
-
-   **Not distributed:** the SEAME-fine-tuned checkpoints (the stage-1 CosyVoice2 LLM, the Whisper-LAL
-   language head and the MER critic) are derived from the SEAME corpus, whose licence does not allow
-   redistribution. With a SEAME licence you can rebuild them: the stage-1 LLM with `docs/PIPELINE.md`
-   (stage 1) and the Whisper-LAL model with `lal/README.md` (`lal/train_whisper_LAL.py`). The MER
-   critic is not covered by this repository: it is any Hugging Face Whisper directory fine-tuned on
-   the SEAME train set with standard tooling (the authors fully fine-tuned `openai/whisper-large-v3`
-   with the Hugging Face `transformers` Trainer), set as `CMI_DPO_ASR_MODEL_DIR`. Without them the
-   stock CosyVoice2 model still runs end to end (`--ckpt none` / empty `CMI_DPO_SFT_CKPT`), UTMOS works
-   as is, and only the MER and ΔCMI critics need a replacement.
-
-## Configuration
-
-All machine-specific locations come from environment variables with the prefix `CMI_DPO_`, read by
-`cmi_dpo/paths.py`. The loader also reads `config/paths.env` (plain `KEY=VALUE` lines, `#` comments,
-an optional `export` prefix; variables already set in the shell win over the file, in python and in
-the bash layer alike; paths must be absolute) from the repository root, so the usual setup is:
+## Setup
 
 ```bash
-cp config/paths.env.example config/paths.env   # git-ignored; edit the values
-python -c "import cmi_dpo.paths as p; print(p.describe())"   # shows every key and its current value
+git clone https://github.com/yyheng/CSTTS-DPO.git && cd CSTTS-DPO
+
+# CosyVoice snapshot used in the paper (+ Matcha-TTS, which the fork does not track)
+git clone https://github.com/YUCHEN005/TTS_finetune.git third_party/TTS_finetune
+git -C third_party/TTS_finetune apply ../../patches/0001-cosyvoice-fork-remove-debug-print.patch
+MATCHA=third_party/TTS_finetune/CosyVoice/Matcha-TTS
+git clone https://github.com/shivammehta25/Matcha-TTS.git $MATCHA
+git -C $MATCHA checkout $(git -C $MATCHA log --reverse --format=%H -S0.0.5.1 -- matcha/VERSION | head -1)
+
+# environment (python 3.10, torch 2.3.1, transformers 4.40.1)
+conda env create -f env/environment.yml && conda activate cstts
+
+# CosyVoice2-0.5B
+python -c "from modelscope import snapshot_download; snapshot_download('iic/CosyVoice2-0.5B', local_dir='pretrained_models/CosyVoice2-0.5B')"
+
+# machine-specific paths (edit the values)
+cp config/paths.env.example config/paths.env
 ```
 
-| variable | meaning |
+`config/paths.env` (all keys prefixed `CMI_DPO_`, absolute paths; `python -c "import cmi_dpo.paths as p; print(p.describe())"` shows the result):
+
+| key | value |
 |---|---|
-| `CMI_DPO_COSY_ROOT` | CosyVoice code directory that contains `cosyvoice/` and `Matcha-TTS/`; an **absolute** path (values are not resolved against the repository root), e.g. `/path/to/CSTTS-DPO/third_party/TTS_finetune/CosyVoice` after the clone above |
-| `CMI_DPO_COSY_MODEL_DIR` | CosyVoice2-0.5B model directory (`cosyvoice.yaml`, `llm.pt`, `flow.pt`, `hift.pt`, `CosyVoice-BlankEN`) |
-| `CMI_DPO_SFT_CKPT` | optional stage-1 LLM checkpoint (Qwen2LM state dict); empty = the stock `llm.pt` |
-| `CMI_DPO_LAL_CODE_DIR` | directory holding `WhisperLAL.py` (default: `lal/` of this repository) |
-| `CMI_DPO_LAL_CKPT` | Whisper-LAL checkpoint: a pickled `WhisperWithLAL` or the `.state_dict.pt` written by `lal/export_state_dict.py` |
-| `CMI_DPO_LAL_BASE_MODEL` | Hugging Face id or local directory of the LAL base model (default `openai/whisper-small`); when set it overrides the id stored in an exported state dict |
-| `CMI_DPO_ASR_MODEL_DIR` | Hugging Face Whisper directory of the MER critic |
-| `CMI_DPO_UTMOS_SOURCE` | `hub` (torch.hub, default) or `local` |
-| `CMI_DPO_UTMOS_REPO` | local SpeechMOS clone (only with `CMI_DPO_UTMOS_SOURCE=local`) |
-| `CMI_DPO_UTMOS_CKPT` | local `utmos22_strong` state dict (only with `CMI_DPO_UTMOS_SOURCE=local`) |
-| `CMI_DPO_DATA_ROOT` | directory with the SEAME Kaldi dirs `train valid devman devsge` (`wav.scp text utt2spk utt2dur`) |
-| `CMI_DPO_CONDA_SH` | `conda.sh` sourced by the SLURM jobs |
-| `CMI_DPO_ENV_MAIN` / `CMI_DPO_ENV_ASR` / `CMI_DPO_ENV_LAL` | conda env names used by the sbatch files (all three may be the same env, e.g. `cstts`) |
-| `CMI_DPO_SLURM_PARTITION` | partition passed by `slurm/sb` |
-| `CMI_DPO_SLURM_EXCLUDE` | optional `--exclude` node list |
-| `CMI_DPO_SLURM_ACCOUNT` | optional `--account` |
-| `CMI_DPO_SLURM_EXTRA` | optional extra `sbatch` options (word-split) |
+| `COSY_ROOT` | `.../third_party/TTS_finetune/CosyVoice` |
+| `COSY_MODEL_DIR` | `.../pretrained_models/CosyVoice2-0.5B` |
+| `SFT_CKPT` | stage-1 LLM checkpoint from step 1 (empty = stock CosyVoice2) |
+| `LAL_CKPT` | Whisper-LAL checkpoint (step 9) |
+| `ASR_MODEL_DIR` | Whisper directory fine-tuned on SEAME (MER critic; any HF Whisper dir works) |
+| `UTMOS_SOURCE` | `hub` (downloads UTMOS22 via torch.hub once) or `local` + `UTMOS_REPO` / `UTMOS_CKPT` |
+| `DATA_ROOT` | directory holding the SEAME Kaldi dirs `train valid devman devsge` |
+| `CONDA_SH`, `ENV_*`, `SLURM_*` | only for the SLURM scripts (`docs/CLUSTER.md`) |
 
-Every script also accepts the corresponding CLI flags (`--ckpt`, `--model_dir`, `--utmos_source`, `--utmos_repo`, ...), which
-override the variables; `--show_paths` prints the resolved configuration. A missing required
-variable raises a clear error naming it and `config/paths.env.example`.
+The SEAME-fine-tuned checkpoints (stage-1 LLM, Whisper-LAL, MER critic) are not distributed
+(SEAME licence); steps 1 and 9 rebuild them. Everything else is downloaded automatically.
 
-## Inference
+## Usage
 
-Run the commands from the repository root inside the `cstts` env with `config/paths.env` filled in.
-Every script has `--help`. The examples use placeholder paths.
+Run from the repository root inside the `cstts` env. Every script has `--help`.
+On SLURM use `slurm/sb slurm/<step>.sbatch` or `bash slurm/run_dpo_round.sh` (whole DPO round as a
+dependency chain); see `docs/CLUSTER.md`. Details of every stage: `docs/PIPELINE.md`.
 
-**a. One sentence** (zero-shot voice cloning from a 3-10 s prompt of the target speaker; the prompt
-transcript conditions the LLM, so it must be exact). SEAME-style input text is space-separated with
-one Chinese character per token, e.g. `"我 觉 得 the project 还 可 以"`:
+**0. Manifest** (targets + same-speaker prompts from a Kaldi dir; `--hours H` for a subset)
 
 ```bash
-python scripts/infer_one.py \
-    --text "我 觉 得 the project 还 可 以" \
-    --prompt_wav /path/to/prompt.wav --prompt_text "prompt transcript in the same convention" \
-    --ckpt /path/to/dpo_best.pth --out out.wav --temperature 1.0 --seed 0
-# --ckpt none = stock CosyVoice2; --sr 16000 writes 16 kHz instead of 24 kHz; --n 3 samples three wavs
+python scripts/00_prep_manifest.py --data_dir $CMI_DPO_DATA_ROOT/train --out data/train.tsv
+python scripts/00_prep_manifest.py --data_dir $CMI_DPO_DATA_ROOT/valid --out data/valid.tsv
 ```
 
-**b. Batch synthesis of a manifest** (one utterance per transcript, same-speaker prompts drawn
-from the Kaldi dir, 16 kHz Kaldi-style output ready for ASR training):
+**1. Stage 1: fine-tune the CosyVoice2 LLM (SFT)**
 
 ```bash
-python scripts/00_prep_manifest.py --data_dir /path/to/kaldi_dir --out data/my_manifest.tsv
-python scripts/20_synthesize.py --manifest data/my_manifest.tsv --ckpt /path/to/dpo_best.pth \
-    --out exp/synth_my --utt_prefix syn_ --temperature 1.0 --seed 0
-# -> exp/synth_my/{wav/,wav.scp,text,utt2spk,utt2dur,failed.txt,synth_config.json}
-# several GPUs: --shard i --nshards n per job, then once:  python scripts/20_synthesize.py --out exp/synth_my --merge
-# --hours H caps the corpus; --dry_run prints the plan; a re-run resumes where it stopped
+python scripts/01_build_sft_cache.py --manifest data/train.tsv --out data/sft_cache/train.pt   # --shard i --nshards n for parallel jobs
+python scripts/01_build_sft_cache.py --manifest data/valid.tsv --out data/sft_cache/valid.pt
+torchrun --standalone --nproc_per_node=4 scripts/02_train_sft.py \
+    --train_cache 'data/sft_cache/train*.pt' --valid_cache data/sft_cache/valid.pt --exp exp/sft \
+    --lr 2e-4 --batch 1 --global_batch 4 --max_steps 50000          # -> exp/sft/best.pth  (set CMI_DPO_SFT_CKPT to it)
 ```
 
-**c. CMIspeech / ΔCMI of any wav list** (Whisper-LAL; needs `CMI_DPO_LAL_CKPT`):
+**2. Candidates** (N samples per transcript at temperature τ)
 
 ```bash
-# wav.scp mode: a Kaldi dir (or its wav.scp) -> one row per wav
-python scripts/13_score_cmi.py --wav_scp /path/to/kaldi_dir --out cmi.tsv --print_summary
-# cands.tsv mode: candidate rows (utt cand wav ...) + the real recordings of --manifest (rows cand=gt)
-python scripts/13_score_cmi.py --cands_tsv exp/round1/gen/cands.tsv --manifest data/my_manifest.tsv \
-    --out cmi.tsv --print_summary
-# synthetic corpus vs. its real counterpart: --wav_scp exp/synth_my --manifest data/my_manifest.tsv --cand_label synth --gt_all
+python scripts/10_gen_candidates.py --manifest data/train.tsv --out exp/round1/gen --n_cand 4 --temperature 1.0 --seed 0
+# parallel: --shard i --nshards n per job, then:  python scripts/10_gen_candidates.py --out exp/round1/gen --merge
 ```
 
-Output TSV columns: `utt cand wav n_frames n_zh n_en n_blank n_other cmi` (`cand` = `gt` for real
-recordings, the candidate index or `--cand_label` otherwise; `n_*` = frames per class; `cmi` in
-[0, 1]), plus `text_cmi` with `--text_cmi` (token-level CMI of the manifest text) and `labels_rle`
-with `--dump_labels` (run-length-encoded frame labels, e.g. `0x120,1x35,2x10`). `--print_summary`
-prints the mean CMI per `cand` and the mean ΔCMI against the `gt` rows in percent.
-
-**d. Scoring a synthesized set with the three critics** (MER needs `CMI_DPO_ASR_MODEL_DIR`, UTMOS
-needs internet once or `CMI_DPO_UTMOS_SOURCE=local`):
+**3. Critics** (MER, UTMOS, CMIspeech of candidates and of the real recordings)
 
 ```bash
-S=exp/synth_my; M=data/my_manifest.tsv
-python scripts/11_score_mer.py   --wav_scp $S --manifest $M --cand_label synth --out $S/mer.tsv
-python scripts/12_score_utmos.py --wav_scp $S --cand_label synth --out $S/utmos.tsv
-python scripts/13_score_cmi.py   --wav_scp $S --manifest $M --cand_label synth --gt_all --out $S/cmi.tsv
-python scripts/eval_tts.py --set_dir $S --mer_tsv $S/mer.tsv --utmos_tsv $S/utmos.tsv --cmi_tsv $S/cmi.tsv \
-    --cand_label synth --utt_prefix syn_ --set_name synth_my
-# -> $S/eval.json: utmos_mean, mer_corpus_pct, cmi_mean_pct, cmi_gt_mean_pct, dcmi_mean_pct, ...
+R=exp/round1
+python scripts/11_score_mer.py   --cands_tsv $R/gen/cands.tsv --manifest data/train.tsv --out $R/mer.tsv
+python scripts/12_score_utmos.py --cands_tsv $R/gen/cands.tsv --out $R/utmos.tsv
+python scripts/13_score_cmi.py   --cands_tsv $R/gen/cands.tsv --manifest data/train.tsv --out $R/cmi.tsv --print_summary
 ```
 
-For a candidate set produced by `10_gen_candidates.py` use `--cands_tsv <dir>/cands.tsv` instead of
-`--wav_scp` in all three critics and `--set_dir <dir>` (no `--cand_label` / `--utt_prefix`) in
-`eval_tts.py`.
+**4. Preference pairs** (`R = λ·UTMOS − γ·MER − ν·ΔCMI`, best vs. worst candidate, thresholds on the preferred one)
 
-## Training
+```bash
+python scripts/14_build_pairs.py --cands $R/gen/cands.tsv --mer $R/mer.tsv --utmos $R/utmos.tsv --cmi $R/cmi.tsv \
+    --tokens_dir $R/gen/tokens --out $R/pairs --lam 1 --gam 1 --nu 1
+# ablations: --lam 0 --nu 0 (MER only), --nu 0 (MER + UTMOS); a weight of 0 disables that critic and its threshold
+```
 
-* `docs/PIPELINE.md`: data conventions, stage 1 (SFT token cache + DDP fine-tuning), stage 2 (one
-  DPO round: candidates, critics, pairs, DPO), the critic ablation by weights, sharded synthesis,
-  evaluation, output formats, known choices and troubleshooting.
-* `docs/CLUSTER.md`: the SLURM layer (`slurm/sb`, the sbatch files, `run_dpo_round.sh` dependency
-  chain, GPU accounting, `smoke.sh`) and the authors' legacy three-environment layout.
-* `lal/README.md`: training the Whisper-LAL language head and exporting its state dict.
+**5. Stage 2: DPO**
+
+```bash
+torchrun --standalone --nproc_per_node=2 scripts/15_train_dpo.py --pairs $R/pairs/pairs.pt --exp $R/dpo \
+    --init_ckpt $CMI_DPO_SFT_CKPT --beta 0.1 --lr 1e-6 --epochs 2 --batch 4 --bf16   # -> exp/round1/dpo/dpo_best.pth
+```
+
+**6. Synthesize an augmentation corpus** (16 kHz Kaldi dir: `wav/ wav.scp text utt2spk utt2dur`)
+
+```bash
+python scripts/20_synthesize.py --manifest data/train.tsv --ckpt $R/dpo/dpo_best.pth --out exp/synth --utt_prefix syn_ --hours 100
+# parallel: --shard i --nshards n per job (same --hours), then:  python scripts/20_synthesize.py --out exp/synth --merge
+```
+
+**7. Evaluate a TTS model** (UTMOS, MER, ΔCMI on devman / devsge)
+
+```bash
+python scripts/00_prep_manifest.py --data_dir $CMI_DPO_DATA_ROOT/devman --out data/devman.tsv
+S=exp/eval_devman; M=data/devman.tsv
+python scripts/10_gen_candidates.py --manifest $M --out $S/gen --ckpt $R/dpo/dpo_best.pth --n_cand 1
+python scripts/11_score_mer.py   --cands_tsv $S/gen/cands.tsv --manifest $M --out $S/mer.tsv
+python scripts/12_score_utmos.py --cands_tsv $S/gen/cands.tsv --out $S/utmos.tsv
+python scripts/13_score_cmi.py   --cands_tsv $S/gen/cands.tsv --manifest $M --out $S/cmi.tsv
+python scripts/eval_tts.py --set_dir $S/gen --mer_tsv $S/mer.tsv --utmos_tsv $S/utmos.tsv --cmi_tsv $S/cmi.tsv --set_name devman   # -> $S/gen/eval.json
+```
+
+**8. One sentence** (zero-shot voice cloning from a 3-10 s prompt; SEAME-style text = one Chinese character per token)
+
+```bash
+python scripts/infer_one.py --text "我 觉 得 the project 还 可 以" --prompt_wav /path/to/prompt.wav \
+    --prompt_text "prompt transcript" --ckpt $R/dpo/dpo_best.pth --out out.wav      # --ckpt none = stock CosyVoice2, --sr 16000, --n 3
+```
+
+**9. Whisper-LAL: train, export, score any wavs**
+
+```bash
+python lal/train_whisper_LAL.py --train $CMI_DPO_DATA_ROOT/train --dev $CMI_DPO_DATA_ROOT/valid \
+    --model openai/whisper-small --save_dir exp/lal                               # -> exp/lal/<best>.pt
+python lal/export_state_dict.py --ckpt exp/lal/<best>.pt --out exp/lal/lal.state_dict.pt   # set CMI_DPO_LAL_CKPT to it
+python scripts/13_score_cmi.py --wav_scp /path/to/kaldi_dir --out cmi.tsv --print_summary   # utt cand wav n_frames n_zh n_en n_blank n_other cmi
+```
 
 ## License
 
-This repository is released under the Apache License 2.0 (`LICENSE`). CosyVoice is Apache-2.0,
-Matcha-TTS, SpeechMOS/UTMOS and OpenAI Whisper are MIT; see `NOTICE`. The SEAME corpus and all models
-fine-tuned on it are covered by the SEAME licence, which is separate from this code licence.
-
-## Acknowledgements
-
-Built on [CosyVoice](https://github.com/FunAudioLLM/CosyVoice) (CosyVoice2-0.5B and its training
-code), [Matcha-TTS](https://github.com/shivammehta25/Matcha-TTS),
-[SpeechMOS / UTMOS](https://github.com/tarepan/SpeechMOS), [Whisper](https://github.com/openai/whisper)
-and Hugging Face `transformers`, and on the SEAME corpus (LDC2015S04).
-
-## Citation
-
-If you use this code, please cite the paper (see `CITATION.cff` and the BibTeX entry above):
-Yeo et al., *Improving Code-Switching ASR with Code-Mixing Guided Synthetic Speech*, Proc. Interspeech
-2026 (arXiv:2606.19381).
+Apache-2.0 (`LICENSE`). Built on [CosyVoice](https://github.com/FunAudioLLM/CosyVoice),
+[Matcha-TTS](https://github.com/shivammehta25/Matcha-TTS), [SpeechMOS / UTMOS](https://github.com/tarepan/SpeechMOS)
+and [Whisper](https://github.com/openai/whisper); see `NOTICE`. The SEAME corpus and models fine-tuned
+on it are covered by the SEAME licence.
