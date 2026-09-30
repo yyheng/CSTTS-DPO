@@ -25,15 +25,14 @@ Outputs
 
 Model
     --ckpt: Qwen2LM state_dict (stage-1 SFT or DPO checkpoint, same loader); default = the
-    configured CMI_DPO_SFT_CKPT (cmi_dpo.paths, config/paths.env), 'none' = the stock CosyVoice2
+    configured CMI_DPO_SFT_CKPT (cmi_dpo.paths), 'none' = the stock CosyVoice2
     llm.pt. CosyVoice code / model dirs come from CMI_DPO_COSY_ROOT / CMI_DPO_COSY_MODEL_DIR.
     --show_paths prints the configured paths and exits. Scoring the output (MER / UTMOS /
     CMIspeech) is NOT done here: see 11_score_mer.py, 12_score_utmos.py and 13_score_cmi.py.
 
 Environment
-    The CosyVoice env (CMI_DPO_ENV_MAIN; on the cluster ``cosyvoicenew``). GPU (--device cuda:0,
-    default) or CPU (--device cpu, ~1 min per short utterance); on the cluster run it through
-    srun/sbatch, never on the login node.
+    The CosyVoice env. GPU (--device cuda:0, default) or CPU (--device cpu, ~1 min per short
+    utterance).
 
 Example
     python -u scripts/infer_one.py \\
@@ -82,7 +81,7 @@ def resolve_ckpt(arg: str | None) -> str | None:
 
     Flag omitted (None) = the configured CMI_DPO_SFT_CKPT (None when it is unset / empty);
     'none' (case-insensitive) or '' = the stock CosyVoice2 llm.pt; anything else = that path.
-    Resolved after parsing so that --help works without config/paths.env.
+    Resolved after parsing so that --help works without the CMI_DPO_* environment variables.
     """
     if arg is None:
         return paths.sft_ckpt() or None

@@ -67,13 +67,13 @@ sharding and of the shuffle.
 --dry_run builds the fingerprint and the plan (shuffled/sharded/limited rows with their
 done/pending status and the estimated cap cut-off) WITHOUT loading the model, prints both and exits
 0; a fingerprint mismatch aborts the dry run exactly like a real run would.
-Exit status is 1 when every attempted utterance failed or was rejected (so a --dependency=afterok
-chain stops).
+Exit status is 1 when every attempted utterance failed or was rejected (so downstream steps that
+require exit status 0 stop).
 
-Environment: conda env `cosyvoicenew` (torch 2.3.1+cu121), one GPU, compute nodes only,
+Environment: one GPU, the CosyVoice env (torch 2.3.1+cu121),
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1.
 Paths: the CosyVoice2 checkout / model dir and the default --ckpt (CMI_DPO_SFT_CKPT) come from
-cmi_dpo.paths (config/paths.env or the environment); --show_paths prints them and exits.
+cmi_dpo.paths (the CMI_DPO_* environment variables); --show_paths prints them and exits.
 
 Example:
     python -u scripts/20_synthesize.py \
@@ -139,7 +139,7 @@ def resolve_ckpt(arg: str | None) -> str | None:
 
     Flag omitted (None) = the configured CMI_DPO_SFT_CKPT (None when it is unset / empty);
     'none' (case-insensitive) or '' = the stock CosyVoice2 llm.pt; anything else = that path.
-    Resolved after parsing so that --help works without config/paths.env.
+    Resolved after parsing so that --help works without the CMI_DPO_* environment variables.
     """
     if arg is None:
         return paths.sft_ckpt() or None

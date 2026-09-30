@@ -2,9 +2,8 @@
 
 Purpose
 -------
-Thin wrappers around a CosyVoice2 checkout (``CMI_DPO_COSY_ROOT``, see
-``cmi_dpo/paths.py`` and ``config/paths.env``) that the candidate-generation, DPO-training
-and synthesis scripts code against:
+Thin wrappers around a CosyVoice2 checkout (``CMI_DPO_COSY_ROOT``, see ``cmi_dpo/paths.py``) that
+the candidate-generation, DPO-training and synthesis scripts code against:
 
   load_cosyvoice2        full CosyVoice2 (frontend + LLM + flow + hift) with the SFT LLM loaded
   load_llm_only          lean Qwen2LM-only construction via hyperpyyaml (DPO ranks)
@@ -17,20 +16,19 @@ and synthesis scripts code against:
   tokens_to_wav          speech tokens -> 24 kHz waveform through cv.model.token2wav
   sequence_logps         batched, differentiable sequence log-probabilities (DPO policy / ref)
 
-Environment: the CosyVoice env (``CMI_DPO_ENV_MAIN``; on the cluster ``cosyvoicenew``: torch 2.3.1,
-transformers 4.40.1, hyperpyyaml). All cosyvoice imports are lazy (inside functions) and go
-through ``_ensure_cosy_path``. Locations come from ``cmi_dpo.paths`` and are resolved lazily:
-importing this module never needs ``config/paths.env``; ``COSY_ROOT`` / ``COSY_MODEL_DIR`` /
-``SFT_LLM_CKPT`` stay available as module attributes (evaluated on access, see ``__getattr__``).
+Environment: the CosyVoice env (torch 2.3.1, transformers 4.40.1, hyperpyyaml). All cosyvoice
+imports are lazy (inside functions) and go through ``_ensure_cosy_path``. Locations come from
+``cmi_dpo.paths`` and are resolved lazily: importing this module never needs the CMI_DPO_*
+environment variables; ``COSY_ROOT`` / ``COSY_MODEL_DIR`` / ``SFT_LLM_CKPT`` stay available as
+module attributes (evaluated on access, see ``__getattr__``).
 
 Caveat: loading ``cosyvoice.yaml`` (both loaders below) executes the yaml's
 ``!apply:random.seed [1986]`` / numpy / torch seed lines, i.e. every load RESETS the global
 RNGs to 1986. Seed AFTER loading the model if you need a --seed-controlled run.
 
-Example (GPU smoke test, run on a compute node, never on the login node):
-  srun --gres=gpu:1 --time=00:20:00 bash -lc 'source "$CMI_DPO_CONDA_SH" && \
-       conda activate "$CMI_DPO_ENV_MAIN" && export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 && \
-       python -u <repo>/cmi_dpo/cosy.py --selftest --out_wav <repo>/logs/cosy_selftest.wav'
+Example (GPU smoke test):
+  export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+  python -u <repo>/cmi_dpo/cosy.py --selftest --out_wav <repo>/logs/cosy_selftest.wav
   (the prompt defaults to a SEAME devman utterance under CMI_DPO_DATA_ROOT; pass
    --prompt_wav/--prompt_text for any other 16 kHz prompt.)
 """
@@ -67,7 +65,7 @@ log = logging.getLogger(__name__)
 
 
 # --------------------------------------------------------------------------------------
-# locations (lazy: nothing here needs config/paths.env at import time)
+# locations (lazy: nothing here needs the CMI_DPO_* environment variables at import time)
 # --------------------------------------------------------------------------------------
 def cosy_root() -> str:
     """CosyVoice code dir (CMI_DPO_COSY_ROOT; SystemExit with a hint when unset)."""
@@ -134,9 +132,9 @@ def load_llm_ckpt(llm: torch.nn.Module, ckpt: str) -> None:
 def _construct_cosyvoice2(model_dir: str, device: torch.device) -> Any:
     """``CosyVoice2(model_dir, load_jit=False, load_trt=False, fp16=False[, device=device])``.
 
-    The cluster checkout accepts ``device=``; a fork whose ``__init__`` lacks that keyword is
-    constructed without it (it then picks cuda:0 / cpu itself) and a warning is logged when
-    that choice may differ from the requested device.
+    The CosyVoice checkout used for the paper accepts ``device=``; a fork whose ``__init__``
+    lacks that keyword is constructed without it (it then picks cuda:0 / cpu itself) and a
+    warning is logged when that choice may differ from the requested device.
     """
     from cosyvoice.cli.cosyvoice import CosyVoice2
 
@@ -495,7 +493,7 @@ def sequence_logps(llm: torch.nn.Module,
 
 
 # --------------------------------------------------------------------------------------
-# self-test (GPU; run through srun/sbatch)
+# self-test (GPU)
 # --------------------------------------------------------------------------------------
 def _selftest(args: argparse.Namespace) -> None:
     _ensure_cosy_path()
@@ -507,7 +505,7 @@ def _selftest(args: argparse.Namespace) -> None:
         data_root = paths.data_root()
         if not data_root:
             raise SystemExit('--prompt_wav not given and CMI_DPO_DATA_ROOT is unset: pass --prompt_wav '
-                             '(+ --prompt_text) or set CMI_DPO_DATA_ROOT in config/paths.env so the default '
+                             '(+ --prompt_text) or export CMI_DPO_DATA_ROOT so the default '
                              f'SEAME prompt <DATA_ROOT>/{SELFTEST_PROMPT_REL} can be used')
         prompt_wav = os.path.join(data_root, SELFTEST_PROMPT_REL)
     if not os.path.isfile(prompt_wav):

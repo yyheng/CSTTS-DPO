@@ -13,10 +13,16 @@ __pycache__/
 *.wav
 *.flac
 *.partial
-# machine-specific configuration (copy config/paths.env.example instead)
-config/paths.env
 # third-party code and downloaded models
 third_party/
 pretrained_models/
 # misc
 .DS_Store
+# cluster-specific helpers kept out of the public repository
+slurm/
+config/
+patches/
+docs/CLUSTER.md
+docs/PIPELINE.md
+env/freeze/
+lal/slurm_train_lal.example

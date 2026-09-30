@@ -9,7 +9,7 @@ one language label per 20 ms encoder frame, which the CMIspeech critic (`cmi_dpo
 `scripts/13_score_cmi.py`) turns into the code-mixing index of any wav. `WhisperLAL.py`, `WhisperDataPreLAL.py`,
 `train_whisper_LAL.py` and `utils.py` are the authors' training code (verbatim, except that the `--train/--dev/--devman/--devsge`
 defaults of `train_whisper_LAL.py` read the environment variable `CMI_DPO_DATA_ROOT`; the script does not load
-`config/paths.env` itself, so either export it first (`source slurm/load_env.sh`) or pass the four Kaldi dirs
+the environment, so either export it first or pass the four Kaldi dirs
 explicitly as below, otherwise the defaults fall back to the relative `data/SEAME_Segmented/...`); the module name
 `WhisperLAL` must not change because the pickled checkpoints reference it.
 
@@ -20,7 +20,7 @@ Chinese one character per token): `python train_whisper_LAL.py --train <kaldi/tr
 --save_dir exp` (`--lal` weights the alignment loss, `--module encoder|decoder|all` chooses what is trained,
 `--zeroshot true` evaluates the stock model first). Every `--save_every` steps the dev WER is computed and the
 three best checkpoints are kept in `--save_dir` as whole pickled models named
-`loss_<loss>_step_<step>_wer_<wer>.pt`; `slurm_train_lal.example` is the one-GPU SLURM script used originally
+`loss_<loss>_step_<step>_wer_<wer>.pt`
 (env `whisperold`: torch 1.13.1, transformers 4.38.0, openai-whisper, jiwer, langdetect).
 
 Because a pickled module only loads where the training-time torch/transformers versions are importable, export

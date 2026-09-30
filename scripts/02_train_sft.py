@@ -10,7 +10,7 @@ only. ``Qwen2LM.forward(batch, device)`` takes ``text_token [B,L]``, ``text_toke
 Policy is built with ``cmi_dpo.cosy.load_llm_only(device, llm_ckpt=--init_ckpt)`` (default
 ``none`` = the pretrained ``$CMI_DPO_COSY_MODEL_DIR/llm.pt``; the configured CMI_DPO_SFT_CKPT is
 the OUTPUT of this stage, never its default input). Model paths come from cmi_dpo.paths
-(config/paths.env); ``--show_paths`` prints them and exits.
+(the CMI_DPO_* environment variables); ``--show_paths`` prints them and exits.
 
 Optimisation (paper section 4: AdamW, lr 2e-4, linear warm-up, "batch size of 4")
   * ``--lr_schedule constant_with_warmup`` (default): linear warm-up over ``--warmup_steps``
@@ -63,9 +63,9 @@ instead of skipping that epoch's checkpoint.
 Device: CUDA + NCCL when available; without CUDA the script falls back to the gloo backend on
 CPU (smoke tests only; ``--bf16`` is then a no-op).
 
-Environment: conda env ``cosyvoicenew``. Must be launched with torchrun on a compute node.
+Environment: GPU, the CosyVoice env. Must be launched with torchrun.
 
-Example (2 GPUs, inside an sbatch job, from the repo root):
+Example (2 GPUs, from the repo root):
     torchrun --standalone --nproc_per_node=2 \\
         scripts/02_train_sft.py \\
         --train_cache 'data/sft_cache/train.shard*.pt' \\

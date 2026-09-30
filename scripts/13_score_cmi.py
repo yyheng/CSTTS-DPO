@@ -1,10 +1,9 @@
 """CMIspeech critic: Whisper-LAL pseudo frame language labels -> code-mixing index per wav.
 
 Env: --ckpt is either the authors' whole-pickled WhisperWithLAL (loads only in the env that made the
-pickle; on the cluster ``whisperold``: torch 1.13.1, transformers 4.38.0, openai-whisper 20250625) or a
-lal/export_state_dict.py state dict (any env with torch, transformers and openai-whisper, e.g. the main
-env). Runs on a GPU compute node (falls back to CPU with a warning when no GPU is visible). Never on
-the login node.
+pickle: torch 1.13.1, transformers 4.38.0, openai-whisper 20250625) or a lal/export_state_dict.py
+state dict (any env with torch, transformers and openai-whisper, e.g. the main env). GPU (falls
+back to CPU with a warning when no GPU is visible).
 
 Inputs (at least one):
   --cands_tsv  one or more cands.tsv from 10_gen_candidates.py (columns utt cand wav ...)
@@ -35,13 +34,13 @@ Rows that could not be scored (unreadable file, non-finite samples, ...) are log
 to retry only those. --resume also repairs an --out whose last line was cut short by a hard kill
 (common.repair_torn_tsv: the partial line is truncated away and its row scored again).
 Exit status (shared critic policy, same flags in 11_/12_): 0 when the failed fraction
-(failed / rows in scope) is <= --max_fail_frac (default 0.01; a WARNING is logged and the
-afterok chain / .done marker proceed); 2 when it is above that fraction, or with --strict and
-any failure at all.
+(failed / rows in scope) is <= --max_fail_frac (default 0.01; a WARNING is logged and
+downstream steps that require exit status 0 proceed); 2 when it is above that fraction, or
+with --strict and any failure at all.
 
-Paths: --ckpt defaults to the configured CMI_DPO_LAL_CKPT (cmi_dpo.paths, config/paths.env or the
-environment; the WhisperLAL module is found via CMI_DPO_LAL_CODE_DIR), resolved after parsing so
-that --help works without the env file; --show_paths prints the configured paths and exits.
+Paths: --ckpt defaults to the configured CMI_DPO_LAL_CKPT (cmi_dpo.paths, i.e. the environment; the
+WhisperLAL module is found via CMI_DPO_LAL_CODE_DIR), resolved after parsing so that --help works
+without the CMI_DPO_* variables; --show_paths prints the configured paths and exits.
 
 Example:
   python -u scripts/13_score_cmi.py \\
@@ -388,7 +387,7 @@ def main() -> int:
         raise SystemExit("--text_cmi needs the manifest text_tts: pass --manifest")
     if not 0.0 <= args.max_fail_frac <= 1.0:
         raise SystemExit("--max_fail_frac must be in [0, 1]")
-    if args.ckpt is None:  # resolved lazily so that --help works without config/paths.env
+    if args.ckpt is None:  # resolved lazily so that --help works without the CMI_DPO_* variables
         args.ckpt = paths.lal_ckpt()
     columns = (BASE_COLUMNS + ([TEXT_CMI_COLUMN] if args.text_cmi else [])
                + ([LABELS_COLUMN] if args.dump_labels else []))

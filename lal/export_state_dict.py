@@ -13,8 +13,7 @@ Purpose
     same metadata (without the tensors) is written next to the output for inspection.
 
 Environment
-    The env that produced the pickle (on the cluster: ``whisperold``). CPU only; run through
-    srun/sbatch, never on the login node.
+    The env that produced the pickle (the Whisper-LAL training env). CPU only (no GPU needed).
 
 Example
     python lal/export_state_dict.py --ckpt exp/loss_0.201_step_110000_wer_0.6204.pt \\

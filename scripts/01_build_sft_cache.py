@@ -23,13 +23,13 @@ a rerun with the same arguments loads it and continues from the first unprocesse
 ``text_raw`` to mirror the authors' epoch_020.pth convention with <noise>/<UNK> tags kept
 when the manifest was built with ``--text_mode strip``, see docs/DESIGN.md).
 
-Environment: conda env ``cosyvoicenew`` (torch 2.3.1, onnxruntime, openai-whisper).
-Runs on a compute node (GPU optional; the speech tokenizer is ONNX, the Qwen tokenizer is CPU).
+Environment: the CosyVoice env (torch 2.3.1, onnxruntime, openai-whisper).
+CPU is enough (GPU optional; the speech tokenizer is ONNX, the Qwen tokenizer is CPU).
 
 Paths: the CosyVoice2 checkout / model dir come from cmi_dpo.paths (CMI_DPO_COSY_ROOT,
-CMI_DPO_COSY_MODEL_DIR in config/paths.env or the environment); --show_paths prints them and exits.
+CMI_DPO_COSY_MODEL_DIR in the environment); --show_paths prints them and exits.
 
-Example (one shard of four, on a compute node):
+Example (one shard of four):
     python -u scripts/01_build_sft_cache.py \\
         --manifest data/train.tsv \\
         --out data/sft_cache/train.shard0.pt \\

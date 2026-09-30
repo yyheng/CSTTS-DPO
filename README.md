@@ -23,7 +23,7 @@ git clone https://github.com/yyheng/CSTTS-DPO.git && cd CSTTS-DPO
 
 # CosyVoice snapshot used in the paper (+ Matcha-TTS, which the fork does not track)
 git clone https://github.com/YUCHEN005/TTS_finetune.git third_party/TTS_finetune
-git -C third_party/TTS_finetune apply ../../patches/0001-cosyvoice-fork-remove-debug-print.patch
+sed -i "/print('device: '/d" third_party/TTS_finetune/CosyVoice/cosyvoice/cli/cosyvoice.py   # drop a stray debug print in the fork
 MATCHA=third_party/TTS_finetune/CosyVoice/Matcha-TTS
 git clone https://github.com/shivammehta25/Matcha-TTS.git $MATCHA
 git -C $MATCHA checkout $(git -C $MATCHA log --reverse --format=%H -S0.0.5.1 -- matcha/VERSION | head -1)
@@ -33,32 +33,27 @@ conda env create -f env/environment.yml && conda activate cstts
 
 # CosyVoice2-0.5B
 python -c "from modelscope import snapshot_download; snapshot_download('iic/CosyVoice2-0.5B', local_dir='pretrained_models/CosyVoice2-0.5B')"
-
-# machine-specific paths (edit the values)
-cp config/paths.env.example config/paths.env
 ```
 
-`config/paths.env` (all keys prefixed `CMI_DPO_`, absolute paths; `python -c "import cmi_dpo.paths as p; print(p.describe())"` shows the result):
+Machine-specific paths are environment variables (absolute paths; `python -c "import cmi_dpo.paths as p; print(p.describe())"` shows the resolved values):
 
-| key | value |
-|---|---|
-| `COSY_ROOT` | `.../third_party/TTS_finetune/CosyVoice` |
-| `COSY_MODEL_DIR` | `.../pretrained_models/CosyVoice2-0.5B` |
-| `SFT_CKPT` | stage-1 LLM checkpoint from step 1 (empty = stock CosyVoice2) |
-| `LAL_CKPT` | Whisper-LAL checkpoint (step 9) |
-| `ASR_MODEL_DIR` | Whisper directory fine-tuned on SEAME (MER critic; any HF Whisper dir works) |
-| `UTMOS_SOURCE` | `hub` (downloads UTMOS22 via torch.hub once) or `local` + `UTMOS_REPO` / `UTMOS_CKPT` |
-| `DATA_ROOT` | directory holding the SEAME Kaldi dirs `train valid devman devsge` |
-| `CONDA_SH`, `ENV_*`, `SLURM_*` | only for the SLURM scripts (`docs/CLUSTER.md`) |
+```bash
+export CMI_DPO_COSY_ROOT=$PWD/third_party/TTS_finetune/CosyVoice
+export CMI_DPO_COSY_MODEL_DIR=$PWD/pretrained_models/CosyVoice2-0.5B
+export CMI_DPO_DATA_ROOT=/path/to/SEAME_kaldi            # holds train valid devman devsge (wav.scp text utt2spk utt2dur)
+export CMI_DPO_SFT_CKPT=/path/to/sft/best.pth             # stage-1 LLM from step 1; unset = stock CosyVoice2
+export CMI_DPO_LAL_CKPT=/path/to/lal.state_dict.pt        # Whisper-LAL from step 9
+export CMI_DPO_ASR_MODEL_DIR=/path/to/whisper_seame_ft    # MER critic: any HF Whisper dir fine-tuned on SEAME
+export CMI_DPO_UTMOS_SOURCE=hub                            # UTMOS22 via torch.hub; or local + CMI_DPO_UTMOS_REPO / CMI_DPO_UTMOS_CKPT
+```
 
 The SEAME-fine-tuned checkpoints (stage-1 LLM, Whisper-LAL, MER critic) are not distributed
 (SEAME licence); steps 1 and 9 rebuild them. Everything else is downloaded automatically.
 
 ## Usage
 
-Run from the repository root inside the `cstts` env. Every script has `--help`.
-On SLURM use `slurm/sb slurm/<step>.sbatch` or `bash slurm/run_dpo_round.sh` (whole DPO round as a
-dependency chain); see `docs/CLUSTER.md`. Details of every stage: `docs/PIPELINE.md`.
+Run from the repository root inside the `cstts` env. Every script has `--help`; design notes and
+file formats are in `docs/DESIGN.md`.
 
 **0. Manifest** (targets + same-speaker prompts from a Kaldi dir; `--hours H` for a subset)
 

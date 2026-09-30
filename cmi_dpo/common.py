@@ -10,10 +10,10 @@ Purpose
     (``<out>.failed.txt``) and ``failure_exit_code`` (--max_fail_frac / --strict policy).
 
 Environment
-    Pure python + numpy; runs in every project env (cosyvoicenew, asr-whisper,
-    whisperold). torch/torchaudio/soundfile/opencc are imported lazily and optionally.
+    Pure python + numpy; CPU is enough and it runs in every project env.
+    torch/torchaudio/soundfile/opencc are imported lazily and optionally.
 
-Example (inside an srun/sbatch shell on a compute node)
+Example
     python -c "from cmi_dpo import common; print(common.seame_normalize('我 跟 你 讲 <noise> don\\'t 吧'))"
 """
 from __future__ import annotations
@@ -128,7 +128,7 @@ def _opencc_convert() -> Optional[Callable[[str], str]]:
 
 
 def opencc_available() -> bool:
-    """True when opencc t2s is importable here (i.e. seame_normalize output matches the asr-whisper env)."""
+    """True when opencc t2s is importable here (i.e. seame_normalize applies the t2s step)."""
     return _opencc_convert() is not None
 
 
@@ -139,8 +139,8 @@ def seame_normalize(text: str) -> str:
     every Han character isolated by spaces; remaining punctuation -> space;
     '_' -> space; whitespace collapsed. Result: CJK per character, Latin per word.
 
-    NOTE: the output is env-dependent (t2s only where opencc is importable, e.g.
-    asr-whisper; NOT cosyvoicenew/whisperold). Reference and hypothesis must be
+    NOTE: the output is env-dependent (t2s only where opencc is importable;
+    env/requirements.txt installs it). Reference and hypothesis must be
     normalised in the same env; see ``opencc_available()``.
     """
     convert = _opencc_convert()
@@ -318,8 +318,8 @@ def failure_exit_code(n_failed: int, n_total: int, max_fail_frac: float, strict:
     ``n_failed`` rows out of ``n_total`` in scope (rows already done under --resume count in
     the denominator) could not be scored and are listed in ``failed_txt``. The failed fraction
     ``n_failed / max(n_total, 1)`` is compared with ``max_fail_frac``: at or below it a
-    WARNING is logged and 0 is returned so an ``afterok`` dependency chain (and the sbatch
-    ``.done`` marker) proceeds; above it, or with ``strict`` and any failure, an ERROR is
+    WARNING is logged and 0 is returned so downstream steps that require exit status 0
+    proceed; above it, or with ``strict`` and any failure, an ERROR is
     logged and 2 is returned. Re-running with --resume retries exactly the failed rows.
     """
     log = log or LOG
@@ -412,7 +412,7 @@ def seed_all(seed: int) -> None:
     """Seed python ``random``, numpy and (if importable) torch / CUDA.
 
     Str-hash order is NOT covered (PYTHONHASHSEED is read only at interpreter
-    start-up; export it in the sbatch header if needed). Manifest / prompt draws
+    start-up; export it in the launching shell if needed). Manifest / prompt draws
     are deterministic through ``random.Random(seed)`` plus sorted utt order.
     """
     random.seed(seed)

@@ -18,14 +18,14 @@ Purpose
 
 Environment
     A whole-pickled checkpoint only unpickles where the torch / transformers versions of the
-    training env are importable (``CMI_DPO_ENV_LAL``; on the cluster ``whisperold``: torch
-    1.13.1+cu117, transformers 4.38.0, openai-whisper 20250625). A state-dict checkpoint
+    training env are importable (the Whisper-LAL training env: torch 1.13.1+cu117,
+    transformers 4.38.0, openai-whisper 20250625). A state-dict checkpoint
     (lal/export_state_dict.py) loads in any env with torch, transformers and openai-whisper.
     Both need ``import WhisperLAL`` from ``CMI_DPO_LAL_CODE_DIR`` (default: the vendored
     ``<repo>/lal``), done by ``load_lal_model``. The pure helpers (``cmi_from_labels``,
     ``delta_cmi``, ``labels_rle``, ``n_valid_frames``) need only numpy and run in any env.
 
-Example (inside a GPU srun/sbatch shell, LAL env, repo root on sys.path)
+Example (GPU, LAL env, repo root on sys.path)
     python -c "import torch; from cmi_dpo import common, lal_cmi, paths; \\
         m = lal_cmi.load_lal_model(paths.lal_ckpt(), 'cuda:0'); \\
         a = common.load_audio16k(paths.data_root() + '/devman/data/format.1/nc12m-06nc12may_0101-000162-000460.flac'); \\
@@ -79,7 +79,7 @@ def lal_ckpt_default() -> str:
 
 def __getattr__(name: str) -> Any:
     """Lazy module attributes (PEP 562): ``LAL_CKPT_DEFAULT`` (CMI_DPO_LAL_CKPT, '' when unset,
-    so that ``--help`` of the scripts works without config/paths.env) and ``LAL_ROOT``
+    so that ``--help`` of the scripts works without the CMI_DPO_* variables) and ``LAL_ROOT``
     (= ``lal_code_dir()``). Neither is evaluated at import time."""
     if name == "LAL_CKPT_DEFAULT":
         return paths.get("LAL_CKPT", "") or ""

@@ -12,27 +12,13 @@ Downstream ASR fine-tuning is out of scope.
 These notes collect the facts about the external components (CosyVoice2, Whisper-LAL, UTMOS, the MER
 critic), the data conventions and the file formats that the code relies on, together with the
 library API of the `cmi_dpo` package. They are written for maintainers; the recipes for running the pipeline are
-in README.md, docs/PIPELINE.md and docs/CLUSTER.md. Where a statement disagrees with the code, the
+in README.md. Where a statement disagrees with the code, the
 code is authoritative.
 
-## 0. Cluster conventions (see docs/CLUSTER.md)
-All site-specific values come from `config/paths.env` (variables `CMI_DPO_*`, loaded by
-`cmi_dpo/paths.py` in python and by `slurm/load_env.sh` in bash, sourced by `slurm/sb`, `smoke.sh`,
-`run_dpo_round.sh` and every sbatch body; in both layers a variable already set in the environment
-wins over the file; paths in the file are absolute); no tracked file contains an absolute path of a
-particular machine. On the authors' cluster the submit (login) host runs no python at all (every
-invocation, syntax check or import check goes through `srun`/`sbatch`; CPU-only checks use
-`srun --partition=$CMI_DPO_SLURM_PARTITION --nodes=1 --ntasks=1 --cpus-per-task=2 --time=00:10:00 bash -lc '...'`),
-at most 6 GPUs are in use concurrently per user (jobs are chained with `--dependency=afterok:<id>`
-rather than run in parallel), the partition / node exclusions / account are not written into sbatch
-headers (`slurm/sb` adds `--partition=$CMI_DPO_SLURM_PARTITION [--exclude=$CMI_DPO_SLURM_EXCLUDE]
-[--account=...] $CMI_DPO_SLURM_EXTRA --output=$PKG/logs/%x_%j.out --export=ALL,CMI_DPO_PKG=$PKG` at
-submit time), compute nodes are offline (`export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`; nothing
-is downloaded inside a job, all models/checkpoints are local), conda is activated with
-`source "$CMI_DPO_CONDA_SH" && conda activate "$CMI_DPO_ENV_MAIN"` (or `ENV_ASR` / `ENV_LAL`), logs
-go to `$PKG/logs/%x_%j.out` (`sb` creates the dir) and every job body uses `set -euo pipefail` and
-`python -u`. The CosyVoice fork, the original Whisper-LAL code, the critic checkpoints and the data
-are read-only references outside the repository.
+## 0. Configuration
+Every machine-specific location is an environment variable prefixed `CMI_DPO_` (read by `cmi_dpo/paths.py`;
+values are absolute paths); no tracked file contains a path of a particular machine. The CosyVoice fork, the
+original Whisper-LAL code, the critic checkpoints and the data live outside the repository.
 
 ## 1. Environments (conda, python 3.10) and what runs where
 | env          | torch            | transformers | extras                                   | used for |
@@ -162,7 +148,7 @@ Tokens -> waveform (`cosy.tokens_to_wav`) uses cv.model.token2wav:
   wav = cv.model.token2wav(token=torch.tensor([tokens], dtype=torch.int32), prompt_token=inputs['flow_prompt_speech_token'],
           prompt_feat=inputs['prompt_speech_feat'], embedding=inputs['flow_embedding'], uuid=key, token_offset=0, finalize=True, speed=1.0)
   cv.model.hift_cache_dict.pop(key); wav: [1, samples] at 24000 Hz on device. (The committed fork's own
-  `print('device: ', ...)` in CosyVoice2.__init__ is removed by patches/0001; a working copy of the fork
+  `print('device: ', ...)` in CosyVoice2.__init__ is deleted at installation time (`sed` line in the README); a working copy of the fork
   may additionally carry an uncommitted debug `print(type(tts_mel))` in token2wav, which is harmless.)
   Resampling to 16 kHz uses torchaudio.functional.resample when needed.
 
@@ -278,7 +264,6 @@ Output TSV (13_score_cmi.py): columns  utt  cand  wav  n_frames  n_zh  n_en  n_b
     cand_missing_gt_cmi for active critics, cand_missing_<critic>_ignored for disabled ones; other keys such as
     cand_duplicate_rows, n_tokens_mismatch, eos_flag_missing, truncated_pos/neg appear only when non-zero),
     normalisation ranges, mean critic values for pos/neg. Fully deterministic (no RNG).
-  Slurm: pairs.sbatch merges CMI_GT into <out>/cmi_merged.tsv only while NU != 0; a weight-0 critic's TSV is
     passed only when the file exists (informational).
 
 ## 8. Candidate generation (10_gen_candidates.py) — paper §3.2.1
@@ -360,7 +345,7 @@ Output TSV (13_score_cmi.py): columns  utt  cand  wav  n_frames  n_zh  n_en  n_b
   with autocast disabled. Step-0 margin (policy == reference weights): exactly 0 (loss log 2) ONLY when the
   policy also runs in float32 (no --bf16) AND the training micro-batch has the cache's padding layout
   (--batch 1 or identical batch composition; float32 kernels differ by ~1e-5 across paddings). Under the
-  production setting (--bf16, dpo.sbatch BF16=1) the policy side is bf16, so the step-0 margin is bf16
+  production setting (--bf16) the policy side is bf16, so the step-0 margin is bf16
   rounding noise (loss ~0.69 +- small), not 0. A fresh run with --cache_ref logs on rank 0
   `step-0 check ... max|logp_policy - logp_ref_cache| = ...` (first training micro-batch through the policy
   under the training autocast) so the real discrepancy is visible.
@@ -451,13 +436,10 @@ Output TSV (13_score_cmi.py): columns  utt  cand  wav  n_frames  n_zh  n_en  n_b
   be slightly below the cap. --limit for smoke tests.
 
 ## 14. Package layout (repository root = <repo>, the directory holding docs/)
-  docs/DESIGN.md (this file)   README.md (public: install, configuration, inference)   docs/PIPELINE.md (training,
-  synthesis, evaluation recipes)   docs/CLUSTER.md (SLURM layer, legacy envs)
+  docs/DESIGN.md (this file)   README.md (setup and one command block per function)
   cmi_dpo/__init__.py
-  cmi_dpo/paths.py           configuration: REPO_ROOT, ENV_PREFIX='CMI_DPO_', load_env_file() (reads
-                             <repo>/config/paths.env at import unless CMI_DPO_NO_ENV_FILE=1; os.environ wins over the
-                             file), get(name, default), require(name) (SystemExit naming CMI_DPO_<name>,
-                             config/paths.env and config/paths.env.example), describe(), and the accessors
+  cmi_dpo/paths.py           configuration: REPO_ROOT, ENV_PREFIX='CMI_DPO_', load_env_file() (optional KEY=VALUE file; the
+                             environment wins), get(name, default), require(name) (SystemExit naming CMI_DPO_<name>), describe(), and the accessors
                              cosy_root() cosy_model_dir() sft_ckpt() lal_code_dir() lal_ckpt() lal_base_model()
                              asr_model_dir() utmos_source() utmos_repo() utmos_ckpt() data_root()
   cmi_dpo/common.py          manifest IO, kaldi readers, text_tts/text_ref, seame_normalize, levenshtein, tsv helpers, seed_all, resample
@@ -469,40 +451,26 @@ Output TSV (13_score_cmi.py): columns  utt  cand  wav  n_frames  n_zh  n_en  n_b
   scripts/00_prep_manifest.py  01_build_sft_cache.py  02_train_sft.py  10_gen_candidates.py  11_score_mer.py
           12_score_utmos.py  13_score_cmi.py  14_build_pairs.py  15_train_dpo.py  20_synthesize.py  eval_tts.py
           infer_one.py (single-sentence inference: --text --prompt_wav --prompt_text [--ckpt] --out ...)
-  config/paths.env.example   every CMI_DPO_* variable with a comment; copied to the git-ignored config/paths.env
-  env/environment.yml env/requirements.txt env/freeze/{cosyvoicenew,asr-whisper,whisperold}.txt
-  patches/0001-cosyvoice-fork-remove-debug-print.patch   applied to the CosyVoice fork clone
-  slurm/load_env.sh (sourced loader of <repo>/config/paths.env that keeps CMI_DPO_* variables already set: env wins, as in paths.py)
-  slurm/sb (sbatch wrapper adding the site options from config/paths.env; usage `slurm/sb <file.sbatch> [sbatch args]`)
-        prep.sbatch sft_cache.sbatch sft.sbatch gen.sbatch mer.sbatch utmos.sbatch cmi.sbatch pairs.sbatch dpo.sbatch synth.sbatch eval.sbatch
-        (headers hold only job-name/gres/time/cpus; bodies start with PKG=${CMI_DPO_PKG:?run through slurm/sb};
-        source "$PKG/slurm/load_env.sh"; source "$CMI_DPO_CONDA_SH"; conda activate "$CMI_DPO_ENV_MAIN|ASR|LAL")
-        run_dpo_round.sh (submits gen -> {mer,utmos,cmi} -> pairs -> dpo with --dependency through slurm/sb; pins every
-        variable of every stage in its --export list, `none` = empty; the per-stage export strings are
-        expanded QUOTED so a multi-word *_EXTRA stays one --export argv word; every sbatch maps `none` to
-        "" for its optional variables, mer.sbatch's MANIFEST=none only with WAV_SCP)  smoke.sh (4-utt end-to-end,
-        srun options from the same variables)
+  env/environment.yml env/requirements.txt
   logs/ data/ exp/ smoke_out/ third_party/ pretrained_models/   git-ignored run-time directories
   Scripts import the package via: sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
   then `from cmi_dpo import common, paths` etc. Every script has argparse with the defaults above (path
-  defaults from paths.py) and a module docstring stating the env it runs in.
+  defaults from paths.py) and a module docstring.
 
 ## 14a. Release layout (public GitHub copy, repo name CSTTS-DPO)
-  Tracked: the files listed in §14 except the git-ignored directories, config/paths.env, *.pt/*.pth/*.wav/*.flac.
+  Tracked: the files listed in §14 except the git-ignored directories and *.pt/*.pth/*.wav/*.flac.
   Server-agnostic by construction: every machine-specific location is a CMI_DPO_* variable, and no tracked
   file contains a machine-specific path prefix. The CosyVoice fork is not vendored: it is cloned from
-  https://github.com/YUCHEN005/TTS_finetune into third_party/TTS_finetune, patches/0001 is applied (repo-root paths,
-  i.e. `git -C third_party/TTS_finetune apply ../../patches/0001-...patch`) and Matcha-TTS is cloned into
+  https://github.com/YUCHEN005/TTS_finetune into third_party/TTS_finetune, its stray debug print is deleted with the `sed` line of the README, and Matcha-TTS is cloned into
   third_party/TTS_finetune/CosyVoice/Matcha-TTS pinned to the upstream commit that set matcha/VERSION to 0.0.5.1 (the
   fork does not track it and the authors' copy carries no git metadata); CMI_DPO_COSY_ROOT is then set to the ABSOLUTE
   path <repo>/third_party/TTS_finetune/CosyVoice (paths.py does not resolve relative values). Pretrained models are
   downloaded at installation time (CosyVoice2-0.5B via modelscope, whisper-large-v3 / whisper-small via HF, UTMOS via
   torch.hub); the SEAME-fine-tuned checkpoints (stage-1 LLM, Whisper-LAL, MER critic) are NOT distributed (SEAME licence);
-  the LLM and Whisper-LAL are rebuilt with docs/PIPELINE.md / lal/README.md, the MER critic is any SEAME-fine-tuned HF
+  the LLM and Whisper-LAL are rebuilt with the README steps 1 and 9, the MER critic is any SEAME-fine-tuned HF
   Whisper dir (whisper-large-v3 + transformers Trainer for the authors; no recipe in this repo). Licence Apache-2.0
   (LICENSE, NOTICE), CITATION.cff.
-  The cluster copy keeps working unchanged with config/paths.env holding the server values; slurm/smoke.sh
-  exercises the whole chain end to end on a 4-utterance fixture.
+
 
 ## 15. Function reference (library API, exact signatures)
 common.py

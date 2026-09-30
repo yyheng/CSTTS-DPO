@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO,
 
 normalizer = EnglishTextNormalizer()
 
-# SEAME Kaldi dirs: $CMI_DPO_DATA_ROOT from config/paths.env (exported by slurm/sb / the sbatch bodies)
+# SEAME Kaldi dirs: taken from the CMI_DPO_DATA_ROOT environment variable
 DATA_ROOT = os.environ.get('CMI_DPO_DATA_ROOT', 'data/SEAME_Segmented')
 
 def main():

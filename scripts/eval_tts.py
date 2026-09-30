@@ -1,7 +1,6 @@
 """Evaluate a TTS system (paper Table 1): mean UTMOS, corpus MER %, mean CMI / ΔCMI %.
 
-Env: cosyvoicenew (pure python: stdlib + cmi_dpo.common; no torch). Runs on a compute node
-(CPU srun is enough) because no python runs on the login node.
+Env: CPU is enough (pure python: stdlib + cmi_dpo.common; no torch).
 
 Set rows come from --set_dir/cands.tsv (utt cand wav ...) or, failing that, --set_dir/wav.scp
 (cand = --cand_label, default 'gt', matching 11_/12_/13_ in --wav_scp mode). They are joined on
@@ -49,7 +48,7 @@ class ShowPathsAction(argparse.Action):
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="Merge critic TSVs for one TTS set and report Table-1 metrics (env cosyvoicenew, pure python).",
+        description="Merge critic TSVs for one TTS set and report Table-1 metrics (pure python, CPU is enough).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     p.add_argument("--set_dir", required=True, help="Dir holding cands.tsv (preferred) or wav.scp of the set.")
     p.add_argument("--mer_tsv", required=True, help="Output of 11_score_mer.py for this set.")

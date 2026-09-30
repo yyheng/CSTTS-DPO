@@ -1,7 +1,6 @@
 """UTMOS critic: predict naturalness MOS (UTMOS22 strong learner) for candidate or real wavs.
 
-Env: cosyvoicenew (pure torch + torchaudio). Runs on a GPU compute node only (never on the
-login node).
+Env: GPU; pure torch + torchaudio (the CosyVoice env is enough).
 
 Model (``--utmos_source``, default = the configured CMI_DPO_UTMOS_SOURCE, see cmi_dpo.paths):
   hub    ``torch.hub.load('tarepan/SpeechMOS:v1.2.0', 'utmos22_strong', trust_repo=True)``: the
@@ -13,8 +12,8 @@ Model (``--utmos_source``, default = the configured CMI_DPO_UTMOS_SOURCE, see cm
          (--utmos_ckpt, default CMI_DPO_UTMOS_CKPT, e.g. utmos22_strong_step7459_v1.pt). No network.
 Both give the same module: ``forward(wave [B,T] float32, sr) -> [B]`` resamples internally to
 16 kHz, so each file is scored at its own sample rate, one utterance at a time under
-torch.no_grad(). The defaults are resolved after parsing, so --help works without config/paths.env;
---show_paths prints the configured paths and exits.
+torch.no_grad(). The defaults are resolved after parsing, so --help works without the CMI_DPO_*
+variables; --show_paths prints the configured paths and exits.
 
 Input modes (exactly one): --cands_tsv (utt cand wav ...) or --wav_scp (Kaldi dir or wav.scp,
 cand=--cand_label, default 'gt'). Duplicate (utt,cand) rows in cands.tsv are collapsed (last wins).
@@ -27,9 +26,9 @@ summary line, and scoring continues; re-run with --resume to retry exactly those
 first repairs an --out whose last line was cut short by a hard kill (common.repair_torn_tsv:
 the partial line is truncated away and its row scored again) so nothing is glued onto a torn tail.
 Exit status (shared critic policy, same flags in 11_/13_): 0 when the failed fraction
-(failed / rows in scope) is <= --max_fail_frac (default 0.01; a WARNING is logged and the
-afterok chain / .done marker proceed); 2 when it is above that fraction, or with --strict and
-any failure at all.
+(failed / rows in scope) is <= --max_fail_frac (default 0.01; a WARNING is logged and
+downstream steps that require exit status 0 proceed); 2 when it is above that fraction, or
+with --strict and any failure at all.
 
 Example:
   python -u scripts/12_score_utmos.py --cands_tsv exp/round1/cands.tsv --out exp/round1/utmos.tsv
@@ -70,7 +69,7 @@ class ShowPathsAction(argparse.Action):
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="Score UTMOS22-strong naturalness MOS for candidate or real wavs (env cosyvoicenew).",
+        description="Score UTMOS22-strong naturalness MOS for candidate or real wavs (GPU).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--cands_tsv", default=None, help="cands.tsv from 10_gen_candidates.py (utt cand wav ...).")
@@ -99,8 +98,8 @@ def build_parser() -> argparse.ArgumentParser:
 def resolve_utmos_args(args: argparse.Namespace) -> None:
     """Fill --utmos_source / --utmos_repo / --utmos_ckpt from cmi_dpo.paths when not given (in place).
 
-    Done after parsing so that --help works without config/paths.env. 'local' needs both a repo
-    and a checkpoint (SystemExit otherwise); 'hub' ignores them.
+    Done after parsing so that --help works without the CMI_DPO_* variables. 'local' needs both a
+    repo and a checkpoint (SystemExit otherwise); 'hub' ignores them.
     """
     if args.utmos_source is None:
         args.utmos_source = paths.utmos_source()
@@ -114,7 +113,7 @@ def resolve_utmos_args(args: argparse.Namespace) -> None:
         for flag, var, value in (("--utmos_repo", "CMI_DPO_UTMOS_REPO", args.utmos_repo),
                                  ("--utmos_ckpt", "CMI_DPO_UTMOS_CKPT", args.utmos_ckpt)):
             if not value:
-                raise SystemExit(f"--utmos_source local needs {flag} (or {var} in config/paths.env); "
+                raise SystemExit(f"--utmos_source local needs {flag} (or export {var}); "
                                  f"use --utmos_source hub to download the model with torch.hub instead")
 
 

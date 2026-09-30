@@ -1,6 +1,6 @@
 # Python requirements of CSTTS-DPO (python 3.10). Derived from the requirements.txt of the CosyVoice
 # snapshot used in the paper (TTS_finetune/CosyVoice), with the versions of the authors' working
-# environment (env/freeze/cosyvoicenew.txt) where the snapshot differs, plus the packages this
+# environment where the snapshot differs, plus the packages this
 # repository adds.
 #
 # Install into the conda env created from env/environment.yml (it provides pynini==2.1.5 from

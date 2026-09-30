@@ -10,7 +10,7 @@ Purpose
                     TTS_finetune/CosyVoice/data_processing.py) was trained on. The same mode is
                     applied to prompt_text.
       text_ref    = seame_normalize(text_raw) (MER reference). It is written ONLY when opencc is
-                    importable in this env (t2s applied, identical to the asr-whisper scorer);
+                    importable in this env (t2s applied, identical to the MER scorer's references);
                     otherwise the column is left EMPTY so that 11_score_mer recomputes it in the
                     scoring env (env-independent references).
       prompt_*    = the zero-shot speaker prompt:
@@ -49,12 +49,12 @@ Outputs
     convention as 01_build_sft_cache.py.
 
 Environment
-    cosyvoicenew (pure python + numpy; no GPU; NO opencc -> text_ref left empty, see above).
-    Run on a compute node via srun/sbatch.
+    CPU is enough (pure python + numpy; no GPU). Without opencc in the env, text_ref is left
+    empty (see above).
 
 Paths
-    --data_dir defaults to $CMI_DPO_DATA_ROOT/train when CMI_DPO_DATA_ROOT is set (config/paths.env
-    or the environment, see cmi_dpo.paths) and is required otherwise; --out defaults to
+    --data_dir defaults to $CMI_DPO_DATA_ROOT/train when CMI_DPO_DATA_ROOT is set (in the
+    environment, see cmi_dpo.paths) and is required otherwise; --out defaults to
     <repo>/data/train_manifest.tsv. --show_paths prints the configured paths and exits.
 
 Example
@@ -129,7 +129,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap.add_argument("--seed", type=int, default=0, help="RNG seed for subset selection and prompt draws")
     ap.add_argument("--limit", type=int, default=None, help="keep only the first N rows (smoke tests)")
     args = ap.parse_args(argv)
-    if args.data_dir is None:  # resolved after parsing so that --help works without config/paths.env
+    if args.data_dir is None:  # resolved after parsing so that --help works without the CMI_DPO_* variables
         root = paths.data_root()
         if not root:
             ap.error("--data_dir is required (or set CMI_DPO_DATA_ROOT, then it defaults to $CMI_DPO_DATA_ROOT/train)")

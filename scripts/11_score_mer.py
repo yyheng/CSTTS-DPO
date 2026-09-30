@@ -1,7 +1,6 @@
 """MER critic: transcribe candidate (or real) wavs with the SEAME-fine-tuned Whisper and score MER.
 
-Env: asr-whisper (torch 2.9, transformers 4.57, jiwer optional cross-check).
-Runs on a GPU compute node only (never on the login node).
+Env: GPU; the MER-critic env (torch 2.9, transformers 4.57, jiwer optional cross-check).
 
 Decoding mirrors the authors' baselines run_whisper.py exactly: an HF
 ``pipeline('automatic-speech-recognition')`` with ``chunk_length_s=30`` fed a generator of
@@ -24,12 +23,12 @@ every run: `utt cand wav reason`) and reported as `failed N` in the summary line
 short by a hard kill (common.repair_torn_tsv: the partial line is truncated away and its row
 scored again) so nothing is glued onto a torn tail.
 Exit status (shared critic policy, same flags in 12_/13_): 0 when the failed fraction
-(failed / rows in scope) is <= --max_fail_frac (default 0.01; a WARNING is logged and the
-afterok chain / .done marker proceed); 2 when it is above that fraction, or with --strict and
-any failure at all.
+(failed / rows in scope) is <= --max_fail_frac (default 0.01; a WARNING is logged and
+downstream steps that require exit status 0 proceed); 2 when it is above that fraction, or
+with --strict and any failure at all.
 
-Paths: --model_dir defaults to the configured CMI_DPO_ASR_MODEL_DIR (cmi_dpo.paths, config/paths.env
-or the environment), resolved after parsing; --show_paths prints the configured paths and exits.
+Paths: --model_dir defaults to the configured CMI_DPO_ASR_MODEL_DIR (cmi_dpo.paths, i.e. the
+environment), resolved after parsing; --show_paths prints the configured paths and exits.
 
 Example:
   python -u scripts/11_score_mer.py --cands_tsv exp/round1/cands.tsv \
@@ -68,7 +67,7 @@ class ShowPathsAction(argparse.Action):
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="Score MER of candidate or real wavs with the SEAME-fine-tuned Whisper (env asr-whisper).",
+        description="Score MER of candidate or real wavs with the SEAME-fine-tuned Whisper (GPU).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--cands_tsv", default=None,
@@ -236,7 +235,7 @@ def main() -> int:
         raise SystemExit("--cands_tsv requires --manifest for the references")
     if not 0.0 <= args.max_fail_frac <= 1.0:
         raise SystemExit("--max_fail_frac must be in [0, 1]")
-    if args.model_dir is None:  # resolved lazily so that --help works without config/paths.env
+    if args.model_dir is None:  # resolved lazily so that --help works without the CMI_DPO_* variables
         args.model_dir = paths.asr_model_dir()
 
     rows = load_rows(args)

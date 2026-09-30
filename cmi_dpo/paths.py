@@ -2,25 +2,26 @@
 
 Purpose
     Every path or site setting that differs between machines (CosyVoice checkout, model dirs,
-    checkpoints, data root, conda envs, SLURM options) is an environment variable prefixed
-    ``CMI_DPO_``. ``load_env_file`` additionally reads ``<repo>/config/paths.env`` (plain
-    ``KEY=VALUE`` lines) so that nothing has to be exported by hand; variables already present
-    in ``os.environ`` always win over the file. A missing required variable raises SystemExit
-    with a message naming the variable, ``config/paths.env`` and ``config/paths.env.example``.
+    checkpoints, data root, optional launcher settings) is an environment variable prefixed
+    ``CMI_DPO_``. A missing required variable raises SystemExit with a message telling the
+    user to export ``CMI_DPO_<name>``.
 
-    The file is loaded ONCE at import time (see the bottom of this module) unless
-    ``CMI_DPO_NO_ENV_FILE=1``; importing this module never fails because of a missing file
-    or variable — only the ``require``-based accessors do, when they are called.
+    In addition, an optional KEY=VALUE file config/paths.env is read if present (by
+    ``load_env_file``, ONCE at import time, see the bottom of this module; skipped when
+    ``CMI_DPO_NO_ENV_FILE=1``). Variables already present in ``os.environ`` always win over
+    the file. Importing this module never fails because of a missing file or variable — only
+    the ``require``-based accessors do, when they are called.
 
-Keys (all prefixed CMI_DPO_ in the environment / paths.env):
+Keys (all prefixed CMI_DPO_ in the environment):
     COSY_ROOT COSY_MODEL_DIR SFT_CKPT LAL_CODE_DIR LAL_CKPT LAL_BASE_MODEL ASR_MODEL_DIR
-    UTMOS_SOURCE UTMOS_REPO UTMOS_CKPT DATA_ROOT CONDA_SH ENV_MAIN ENV_ASR ENV_LAL
+    UTMOS_SOURCE UTMOS_REPO UTMOS_CKPT DATA_ROOT
+    optional, for cluster launchers: CONDA_SH ENV_MAIN ENV_ASR ENV_LAL
     SLURM_PARTITION SLURM_EXCLUDE SLURM_ACCOUNT SLURM_EXTRA
 
 Environment
-    Pure python (stdlib only); runs in every project env.
+    Pure python (stdlib only); CPU is enough and it runs in every project env.
 
-Example (inside an srun shell on a compute node)
+Example
     python -c "import cmi_dpo.paths as p; print(p.describe())"
 """
 from __future__ import annotations
@@ -51,14 +52,14 @@ KNOWN_KEYS: list[tuple[str, bool, str, str]] = [
     ("UTMOS_REPO", False, "", "local SpeechMOS checkout (CMI_DPO_UTMOS_SOURCE=local)"),
     ("UTMOS_CKPT", False, "", "local utmos22_strong state dict (CMI_DPO_UTMOS_SOURCE=local)"),
     ("DATA_ROOT", False, "", "dir holding the SEAME Kaldi dirs (train/valid/devman/devsge)"),
-    ("CONDA_SH", False, "", "conda.sh to source in SLURM jobs"),
-    ("ENV_MAIN", False, "", "conda env for CosyVoice / DPO / UTMOS stages"),
-    ("ENV_ASR", False, "", "conda env for the MER critic"),
-    ("ENV_LAL", False, "", "conda env for the Whisper-LAL / CMI critic"),
-    ("SLURM_PARTITION", False, "", "sbatch --partition"),
-    ("SLURM_EXCLUDE", False, "", "sbatch --exclude (optional)"),
-    ("SLURM_ACCOUNT", False, "", "sbatch --account (optional)"),
-    ("SLURM_EXTRA", False, "", "extra sbatch options (optional)"),
+    ("CONDA_SH", False, "", "optional, for cluster launchers: conda.sh to source"),
+    ("ENV_MAIN", False, "", "optional, for cluster launchers: conda env for CosyVoice / DPO / UTMOS stages"),
+    ("ENV_ASR", False, "", "optional, for cluster launchers: conda env for the MER critic"),
+    ("ENV_LAL", False, "", "optional, for cluster launchers: conda env for the Whisper-LAL / CMI critic"),
+    ("SLURM_PARTITION", False, "", "optional, for cluster launchers: partition"),
+    ("SLURM_EXCLUDE", False, "", "optional, for cluster launchers: nodes to exclude"),
+    ("SLURM_ACCOUNT", False, "", "optional, for cluster launchers: account"),
+    ("SLURM_EXTRA", False, "", "optional, for cluster launchers: extra scheduler options"),
 ]
 
 
@@ -96,7 +97,7 @@ def _parse_line(line: str) -> Optional[tuple[str, str]]:
 
 
 def load_env_file(path: Optional[str] = None) -> dict[str, str]:
-    """Read ``KEY=VALUE`` lines from ``path`` (default ``<repo>/config/paths.env``).
+    """Read ``KEY=VALUE`` lines from ``path`` (default ``DEFAULT_ENV_FILE``, see the module docstring).
 
     Values already present in ``os.environ`` WIN over the file; keys not yet set are exported
     to ``os.environ``. Returns the merged mapping for the keys found in the file (environment
@@ -143,8 +144,8 @@ def require(name: str) -> str:
     if not value:
         var = ENV_PREFIX + name
         raise SystemExit(
-            f"{var} is not set (or empty). Set it in the environment or in {DEFAULT_ENV_FILE} "
-            f"(copy {EXAMPLE_ENV_FILE} to config/paths.env and fill in the paths for this machine)."
+            f"{var} is not set (or empty). Export it in the environment with the path for this "
+            f"machine, e.g. export {var}=/path/on/this/machine"
         )
     return value
 
