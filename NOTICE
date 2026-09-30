@@ -1,0 +1,11 @@
+CSTTS-DPO (cmi_dpo)
+Copyright 2026 the authors of "Improving Code-Switching ASR with Code-Mixing Guided Synthetic Speech"
+
+This repository is licensed under the Apache License, Version 2.0 (see LICENSE). It includes
+code derived from the authors' Whisper-LAL implementation (frame-level language alignment head on
+top of Whisper) under lal/, and depends on CosyVoice (https://github.com/FunAudioLLM/CosyVoice,
+Apache License 2.0, used through the authors' fork and one small patch under patches/), on
+Matcha-TTS (MIT), on SpeechMOS / UTMOS (https://github.com/tarepan/SpeechMOS, MIT), on
+OpenAI Whisper (MIT) and on Hugging Face transformers (Apache License 2.0). The SEAME corpus and
+every model fine-tuned on it are distributed under their own licence and are not part of this
+repository.

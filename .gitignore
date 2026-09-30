@@ -1,0 +1,22 @@
+# run-time and experiment outputs
+logs/
+smoke_out/
+data/
+exp/
+# python
+__pycache__/
+*.pyc
+*.egg-info
+# checkpoints and audio
+*.pt
+*.pth
+*.wav
+*.flac
+*.partial
+# machine-specific configuration (copy config/paths.env.example instead)
+config/paths.env
+# third-party code and downloaded models
+third_party/
+pretrained_models/
+# misc
+.DS_Store

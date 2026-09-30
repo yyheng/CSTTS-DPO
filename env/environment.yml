@@ -1,0 +1,13 @@
+# conda environment for CSTTS-DPO:  conda env create -f env/environment.yml && conda activate cstts
+# pynini comes from conda-forge (as the CosyVoice README recommends); everything else via pip
+# from env/requirements.txt (torch 2.3.1 cu121 wheels from the PyTorch index).
+name: cstts
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - conda-forge::pynini==2.1.5
+  - pip
+  - pip:
+      - -r requirements.txt

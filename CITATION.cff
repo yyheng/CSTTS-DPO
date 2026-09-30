@@ -1,0 +1,53 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite the paper below."
+title: "Improving Code-Switching ASR with Code-Mixing Guided Synthetic Speech"
+authors:
+  - family-names: Yeo
+    given-names: Yue Heng
+  - family-names: Li
+    given-names: Haoyang
+  - family-names: Peng
+    given-names: Yizhou
+  - family-names: Gopal
+    given-names: Shreyas
+  - family-names: Liu
+    given-names: Hexin
+  - family-names: Garcia-Perera
+    given-names: Leibny Paola
+  - family-names: Sailor
+    given-names: Hardik B.
+  - family-names: Wong
+    given-names: Jeremy H. M.
+  - family-names: Chng
+    given-names: Eng Siong
+year: 2026
+identifiers:
+  - type: other
+    value: "arXiv:2606.19381"
+url: "https://arxiv.org/abs/2606.19381"
+# Accepted to Interspeech 2026 (per the arXiv listing).
+preferred-citation:
+  type: conference-paper
+  title: "Improving Code-Switching ASR with Code-Mixing Guided Synthetic Speech"
+  collection-title: "Proc. Interspeech 2026"
+  year: 2026
+  url: "https://arxiv.org/abs/2606.19381"
+  authors:
+    - family-names: Yeo
+      given-names: Yue Heng
+    - family-names: Li
+      given-names: Haoyang
+    - family-names: Peng
+      given-names: Yizhou
+    - family-names: Gopal
+      given-names: Shreyas
+    - family-names: Liu
+      given-names: Hexin
+    - family-names: Garcia-Perera
+      given-names: Leibny Paola
+    - family-names: Sailor
+      given-names: Hardik B.
+    - family-names: Wong
+      given-names: Jeremy H. M.
+    - family-names: Chng
+      given-names: Eng Siong
